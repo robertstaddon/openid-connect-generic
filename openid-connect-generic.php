@@ -3,7 +3,7 @@
 Plugin Name: OpenID Connect - Generic Client
 Plugin URI: https://github.com/daggerhart/openid-connect-generic
 Description:  Connect to an OpenID Connect identity provider with Authorization Code Flow
-Version: 3.0.6
+Version: 3.1.0
 Author: daggerhart
 Author URI: http://www.daggerhart.com
 License: GPLv2 Copyright (c) 2015 daggerhart
@@ -22,12 +22,14 @@ Notes
 
   Actions
   - openid-connect-generic-user-create - 2 args: fires when a new user is created by this plugin
+  - openid-connect-generic-update-user-using-current-claim - 2 args: fires every time an existing user logs
 
   User Meta
   - openid-connect-generic-user                - (bool) if the user was created by this plugin
   - openid-connect-generic-subject-identity    - the identity of the user provided by the idp
   - openid-connect-generic-last-id-token-claim - the user's most recent id_token claim, decoded
-  - openid-connect-generic-last-user-claim     - the user's most recent user_claim 
+  - openid-connect-generic-last-user-claim     - the user's most recent user_claim
+  - openid-connect-generic-refresh-cookie-key  - encryption key used to secure refresh token info in cookie
   
   Options
   - openid_connect_generic_settings     - plugin settings
@@ -37,7 +39,7 @@ Notes
 
 class OpenID_Connect_Generic {
 	// plugin version
-	const VERSION = '3.0.3';
+	const VERSION = '3.1.0';
 
 	// plugin settings
 	private $settings;
@@ -69,6 +71,12 @@ class OpenID_Connect_Generic {
 	 * WP Hook 'init'
 	 */
 	function init(){
+		$redirect_uri = admin_url( 'admin-ajax.php?action=openid-connect-authorize' );
+
+		if ( $this->settings->alternate_redirect_uri ){
+			$redirect_uri = site_url( '/openid-connect-authorize' );
+		}
+
 		$this->client = new OpenID_Connect_Generic_Client( 
 			$this->settings->client_id,
 			$this->settings->client_secret,
@@ -76,8 +84,7 @@ class OpenID_Connect_Generic {
 			$this->settings->endpoint_login,
 			$this->settings->endpoint_userinfo,
 			$this->settings->endpoint_token,
-			// redirect uri
-			admin_url( 'admin-ajax.php?action=openid-connect-authorize' )
+			$redirect_uri
 		);
 		
 		$this->client_wrapper = OpenID_Connect_Generic_Client_Wrapper::register( $this->client, $this->settings, $this->logger );
@@ -148,11 +155,20 @@ class OpenID_Connect_Generic {
 	 * @param $class
 	 */
 	static public function autoload( $class ) {
-		$filename = strtolower( str_replace( '_', '-', $class ) ) . '.php';
+		$filename = $class . '.php';
+
+		// internal files are all lowercase and use dashes in filenames
+		if ( false === strpos( $filename, '\\' ) ) {
+			$filename = strtolower( str_replace( '_', '-', $filename ) );
+		}
+		else {
+			$filename  = str_replace('\\', DIRECTORY_SEPARATOR, $filename);
+		}
+
 		$filepath = dirname( __FILE__ ) . '/includes/' . $filename;
-		
+
 		if ( file_exists( $filepath ) ) {
-			require $filepath;
+			require_once $filepath;
 		}
 	}
 
@@ -174,6 +190,7 @@ class OpenID_Connect_Generic {
 				'endpoint_login'    => '',
 				'endpoint_userinfo' => '',
 				'endpoint_token'    => '',
+				'endpoint_end_session' => '',
 				
 				// non-standard settings
 				'no_sslverify'    => 0,
@@ -182,6 +199,9 @@ class OpenID_Connect_Generic {
 				
 				// plugin settings
 				'enforce_privacy' => 0,
+				'alternate_redirect_uri' => 0,
+				'link_existing_users' => 0,
+				'redirect_user_back' => 0,
 				'enable_logging'  => 0,
 				'log_limit'       => 1000, 
 			)

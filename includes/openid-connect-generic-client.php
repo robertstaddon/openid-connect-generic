@@ -16,6 +16,8 @@ class OpenID_Connect_Generic_Client {
 	private $state_time_limit = 180;
 
 	/**
+	 * Client constructor
+	 *
 	 * @param $client_id
 	 * @param $client_secret
 	 * @param $scope
@@ -94,6 +96,11 @@ class OpenID_Connect_Generic_Client {
 	 * @return array|\WP_Error
 	 */
 	function request_authentication_token( $code ) {
+
+		// Add Host header - required for when the openid-connect endpoint is behind a reverse-proxy
+		$parsed_url = parse_url($this->endpoint_token);
+		$host = $parsed_url['host'];
+
 		$request = array(
 			'body' => array(
 				'code'          => $code,
@@ -102,7 +109,8 @@ class OpenID_Connect_Generic_Client {
 				'redirect_uri'  => $this->redirect_uri,
 				'grant_type'    => 'authorization_code',
 				'scope'         => $this->scope,
-			)
+			),
+			'headers' => array( 'Host' => $host )
 		);
 
 		// allow modifications to the request
@@ -118,6 +126,35 @@ class OpenID_Connect_Generic_Client {
 		return $response;
 	}
 
+	/**
+	 * Using the refresh token, request new tokens from the idp
+	 *
+	 * @param $refresh_token - refresh token previously obtained from token response.
+	 *
+	 * @return array|\WP_Error
+	 */
+	function request_new_tokens( $refresh_token ) {
+		$request = array(
+			'body' => array(
+				'refresh_token' => $refresh_token,
+				'client_id'     => $this->client_id,
+				'client_secret' => $this->client_secret,
+				'grant_type'    => 'refresh_token'
+			)
+		);
+
+		// allow modifications to the request
+		$request = apply_filters( 'openid-connect-generic-alter-request', $request, 'refresh-token' );
+
+		// call the server and ask for new tokens
+		$response = wp_remote_post( $this->endpoint_token, $request );
+
+		if ( is_wp_error( $response ) ) {
+			$response->add( 'refresh_token' , __( 'Refresh token failed.' ) );
+		}
+
+		return $response;
+	}
 
 	/**
 	 * Extract and decode the token body of a token response
@@ -132,6 +169,15 @@ class OpenID_Connect_Generic_Client {
 
 		// extract token response from token
 		$token_response = json_decode( $token_result['body'], TRUE );
+
+		if ( isset( $token_response[ 'error' ] ) ) {
+			$error = $token_response[ 'error' ];
+			$error_description = $error;
+			if ( isset( $token_response[ 'error_description' ] ) ) {
+				$error_description = $token_response[ 'error_description' ];
+			}
+			return new WP_Error( $error, $error_description, $token_result );
+		}
 
 		return $token_response;
 	}
@@ -148,8 +194,21 @@ class OpenID_Connect_Generic_Client {
 		// allow modifications to the request
 		$request = apply_filters( 'openid-connect-generic-alter-request', array(), 'get-userinfo' );
 
-		// attempt the request
-		$response = wp_remote_get( $this->endpoint_userinfo . '?access_token=' . $access_token, $request );
+		// section 5.3.1 of the spec recommends sending the access token using the authorization header
+		// a filter may or may not have already added headers - make sure they exist then add the token
+		if ( !array_key_exists( 'headers', $request ) || !is_array( $request['headers'] ) ) {
+			$request['headers'] = array();
+		}
+
+		$request['headers']['Authorization'] = 'Bearer '.$access_token;
+
+		// Add Host header - required for when the openid-connect endpoint is behind a reverse-proxy
+		$parsed_url = parse_url($this->endpoint_userinfo);
+		$host = $parsed_url['host'];
+		$request['headers']['Host'] = $host;
+
+		// attempt the request including the access token in the query string for backwards compatibility
+		$response = wp_remote_post( $this->endpoint_userinfo, $request );
 
 		if ( is_wp_error( $response ) ){
 			$response->add( 'request_userinfo' , __( 'Request for userinfo failed.' ) );
@@ -199,7 +258,6 @@ class OpenID_Connect_Generic_Client {
 		if ( isset( $states[ $state ] ) ) {
 			// state is valid, remove it
 			unset( $states[ $state ] );
-
 			$valid = TRUE;
 		}
 
@@ -210,7 +268,7 @@ class OpenID_Connect_Generic_Client {
 	}
 
 	/**
-	 * 
+	 * Ensure that the token meets basic requirements
 	 * 
 	 * @param $token_response
 	 *
@@ -220,7 +278,7 @@ class OpenID_Connect_Generic_Client {
 		// we need to ensure 3 specific items exist with the token response in order
 		// to proceed with confidence:  id_token, access_token, and token_type == 'Bearer'
 		if ( ! isset( $token_response['id_token'] ) || ! isset( $token_response['access_token'] ) ||
-		     ! isset( $token_response['token_type'] ) || $token_response['token_type'] !== 'Bearer'
+		     ! isset( $token_response['token_type'] ) || strcasecmp( $token_response['token_type'], 'Bearer' )
 		) {
 			return new WP_Error( 'invalid-token-response', 'Invalid token response', $token_response );
 		}

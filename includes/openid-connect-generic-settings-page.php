@@ -60,7 +60,7 @@ class OpenID_Connect_Generic_Settings_Page {
 			'scope'             => array(
 				'title'       => __( 'OpenID Scope' ),
 				'description' => __( 'Space separated list of scopes this client should access.' ),
-				'example'     => 'email profile openid',
+				'example'     => 'email profile openid offline_access',
 				'type'        => 'text',
 				'section'     => 'client_settings',
 			),
@@ -85,6 +85,13 @@ class OpenID_Connect_Generic_Settings_Page {
 				'type'        => 'text',
 				'section'     => 'client_settings',
 			),
+			'endpoint_end_session'    => array(
+				'title'       => __( 'End Session Endpoint URL' ),
+				'description' => __( 'Identify provider logout endpoint.' ),
+				'example'     => 'https://example.com/oauth2/logout',
+				'type'        => 'text',
+				'section'     => 'client_settings',
+			),
 			'identity_key'     => array(
 				'title'       => __( 'Identity Key' ),
 				'description' => __( 'Where in the user claim array to find the user\'s identification data. Possible standard values: preferred_username, name, or sub. If you\'re having trouble, use "sub".' ),
@@ -94,20 +101,26 @@ class OpenID_Connect_Generic_Settings_Page {
 			),
 			'no_sslverify'      => array(
 				'title'       => __( 'Disable SSL Verify' ),
-				'description' => __( 'Do not require SSL verification during authorization. The OAuth extension uses curl to make the request. By default CURL will generally verify the SSL certificate to see if its valid an issued by an accepted CA. This setting disabled that verification.' ),
+				'description' => __( 'Do not require SSL verification during authorization. The OAuth extension uses curl to make the request. By default CURL will generally verify the SSL certificate to see if its valid an issued by an accepted CA. This setting disabled that verification.<br><strong>Not recommended for production sites.</strong>' ),
 				'type'        => 'checkbox',
 				'section'     => 'client_settings',
 			),
 			'http_request_timeout'      => array(
 				'title'       => __( 'HTTP Request Timeout' ),
 				'description' => __( 'Set the timeout for requests made to the IDP. Default value is 5.' ),
-				'example'     => 5,
+				'example'     => 30,
 				'type'        => 'text',
 				'section'     => 'client_settings',
 			),
 			'enforce_privacy'   => array(
 				'title'       => __( 'Enforce Privacy' ),
 				'description' => __( 'Require users be logged in to see the site.' ),
+				'type'        => 'checkbox',
+				'section'     => 'authorization_settings',
+			),
+			'alternate_redirect_uri'   => array(
+				'title'       => __( 'Alternate Redirect URI' ),
+				'description' => __( 'Provide an alternative redirect route. Useful if your server is causing issues with the default admin-ajax method. You must flush rewrite rules after changing this setting. This can be done by saving the Permalinks settings page.' ),
 				'type'        => 'checkbox',
 				'section'     => 'authorization_settings',
 			),
@@ -273,6 +286,11 @@ class OpenID_Connect_Generic_Settings_Page {
 	 * Output the options/settings page
 	 */
 	public function settings_page() {
+		$redirect_uri = admin_url( 'admin-ajax.php?action=openid-connect-authorize' );
+
+		if ( $this->settings->alternate_redirect_uri ){
+			$redirect_uri = site_url( '/openid-connect-authorize' );
+		}
 		?>
 		<div class="wrap">
 			<h2><?php print esc_html( get_admin_page_title() ); ?></h2>
@@ -294,12 +312,19 @@ class OpenID_Connect_Generic_Settings_Page {
 
 			<p class="description">
 				<strong><?php _e( 'Redirect URI' ); ?></strong>
-				<code><?php print admin_url( 'admin-ajax.php?action=openid-connect-authorize' ); ?></code>
+				<code><?php print $redirect_uri; ?></code>
+			</p>
+			<p class="description">
+				<strong><?php _e( 'Login Button Shortcode' ); ?></strong>
+				<code>[openid_connect_generic_login_button]</code>
 			</p>
 
 			<?php if ( $this->settings->enable_logging ) { ?>
-				<h2><?php _e( 'Logs' ); ?> </h2>
-				<div><?php print $this->logger->get_logs_table(); ?></div>
+				<h2><?php _e( 'Logs' ); ?></h2>
+				<div id="logger-table-wrapper">
+					<?php print $this->logger->get_logs_table(); ?>
+				</div>
+
 			<?php } ?>
 		</div>
 		<?php
@@ -387,4 +412,3 @@ class OpenID_Connect_Generic_Settings_Page {
 		_e( 'Log information about login attempts through OpenID Connect Generic' );
 	}
 }
- 

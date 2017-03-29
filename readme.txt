@@ -3,7 +3,7 @@ Contributors: daggerhart
 Donate link: http://www.daggerhart.com/
 Tags: security, login, oauth2, openidconnect, apps, authentication, autologin, sso 
 Requires at least: 4
-Tested up to: 4.5.2
+Tested up to: 4.6.1
 Stable tag: trunk
 License: GPLv2 or later
 License URI: http://www.gnu.org/licenses/gpl-2.0.html
@@ -22,6 +22,10 @@ Much of the documentation can be found on the Settings > OpenID Connect Generic 
 Originally based on the plugin provided by shirounagi - https://wordpress.org/plugins/generic-openid-connect/ - but 
 has been completely rewritten.
 
+=== Requirements ===
+
+* Requires PHP 5.4+ with the OpenSSL extensions enabled (Defuse encryption library)
+
 == Installation ==
 
 1. Upload to the `/wp-content/plugins/` directory
@@ -39,6 +43,25 @@ Replace `example.com` with your domain name and path to WordPress.
 
 
 == Changelog ==
+= 3.1.0 =
+* Feature: Refresh tokens
+* Feature: Integrated logout support with end_session endpoint
+* Feature: May use an alternate redirect_uri that doesn't rely on admin-ajax
+* Feature: Support for IDP behind reverse proxy
+* Bug fix: case insensitive check for Bearer token
+* Bug fix: "redirect to origin when auto-sso" cookie issue
+* Bug fix: PHP Warnings headers already sent due to attempts to redirect and set cookies during login form message
+* Bug fix: expire session when access_token expires if no refresh token found
+* UX fix: Show login button on error redirect when using auto-sso
+
+= 3.0.8 =
+* Added [openid-connect-generic-update-user-using-current-claim] action hook allowing other plugins/themes
+  to take action using the fresh claims received when an existing user logs in.
+
+= 3.0.7 =
+
+* When requesting userinfo, send the access token using the Authorization header field as recommended in
+  section 5.3.1 of the specs.
 
 = 3.0.6 =
 
